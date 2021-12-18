@@ -9,7 +9,7 @@ app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
 
 app.get('/', async (req: Request, res: Response) => {
-   res.send('yessssiiiirrrrrr');
+   res.send('yessssiiiirrrrrr welcome to drawww');
 });
 
 const ConnectSellerRoutes = require('./routes/connect_seller');

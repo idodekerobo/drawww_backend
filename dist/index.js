@@ -21,7 +21,7 @@ const PORT = process.env.PORT;
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.get('/', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    res.send('yessssiiiirrrrrr');
+    res.send('yessssiiiirrrrrr welcome to drawww');
 }));
 const ConnectSellerRoutes = require('./routes/connect_seller');
 const CheckoutRoutes = require('./routes/ticket_checkout');
