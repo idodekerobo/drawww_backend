@@ -11,9 +11,9 @@ export interface IUserData {
    stripeAccountData?: IStripeUserData
 }
 export enum SellerStripeOnboardingStatus {
-   NotOnboarded = 0,
-   PartiallyOnboarded = 1,
-   CompletelyOnboarded = 2
+   "not_onboarded" = 0,
+   "partially_onboarded" = 1,
+   "completely_onboarded" = 2
 }
 export interface IStripeUserData {
    accountId: string,
@@ -25,8 +25,8 @@ export interface IStripeUserData {
    statementDescriptor?: string,
 }
 enum SneakerGender {
-   Mens,
-   Womens
+   "mens" = 0,
+   "womens" = 1,
 }
 export interface IUserDrawData {
    userUid: string,
