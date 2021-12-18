@@ -1,0 +1,24 @@
+   {
+   "settings": {
+      "import/resolver": {
+        "node": {
+          "extensions": [".js", ".jsx", ".ts", ".tsx"],
+          "moduleDirectory": ["node_modules", "src/"]
+        }
+      }
+    },
+   "parser": "@typescript-eslint/parser",
+   "plugins": [
+      "@typescript-eslint"
+   ],
+   "rules": {
+      "semi": [
+         "error",
+         "never"
+      ],
+      "quotes": [
+         2,
+         "single"
+      ]
+   }
+}
