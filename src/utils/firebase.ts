@@ -7,7 +7,7 @@ initializeApp({
 //   credential: cert(serviceAccount)
   credential: cert({
      "projectId": process.env.FB_CERT_PROJ_ID,
-     "private_key": process.env.FB_CERT_PRIV_KEY,
+     "private_key": process.env.FB_CERT_PRIV_KEY?.replace(/\\n/g, '\n'),
      "client_email": process.env.FB_CERT_CLIENT_EMAIL,
   })
 });
