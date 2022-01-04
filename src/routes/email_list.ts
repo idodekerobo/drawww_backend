@@ -14,9 +14,13 @@ router.post('/addEmail', async (req: Request, res: Response) => {
             database_id: '2ead84131c3f4ff8823cc41dbd31f903'
          },
          properties: {
-            email: {
+            'email': {
+               type: 'title',
                title: [
-                  { text: { content: req.body.emailAddress }, },
+                  { 
+                     type: 'text',
+                     text: { content: req.body.emailAddress },
+                  },
                ]
             },
          },

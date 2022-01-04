@@ -20,12 +20,12 @@ const EmailListRoutes = require('./routes/email_list');
 // Building Proxy Server for CORS Error requesting api from front-end
 // https://medium.com/@dtkatz/3-ways-to-fix-the-cors-error-and-how-access-control-allow-origin-works-d97d55946d9
 app.use((req: Request, res: Response, next: NextFunction) => {
-   // res.header('Access-Control-Allow-Origin', 'http://localhost:3000'); 
-   const allowedOrigins = [ process.env.LANDING_DOMAIN, process.env.HEROKU_DOMAIN ]
-   const origin = req.headers.origin;
-   if (allowedOrigins.includes(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-   }
+   res.header('Access-Control-Allow-Origin', 'http://localhost:3000'); 
+   // const allowedOrigins = [ process.env.LANDING_DOMAIN, process.env.HEROKU_DOMAIN ]
+   // const origin = req.headers.origin;
+   // if (allowedOrigins.includes(origin)) {
+   //    res.header('Access-Control-Allow-Origin', origin);
+   // }
    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
    res.header('Access-Control-Allow-Headers', 'Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With');
    next();
