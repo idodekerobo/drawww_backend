@@ -3,10 +3,10 @@ const router = express.Router();
 import { firestoreDb } from '../utils/firebase';
 import { IDrawDataFromFirestoreType, IUserData, IPricingObject } from '../utils/types';
 
-// const stripe_publishable_key = process.env.LIVE_STRIPE_PUBLISH_KEY;
-// const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY)
-const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
-const stripe_publishable_key = process.env.TEST_STRIPE_PUBLISH_KEY;
+const stripe_publishable_key = process.env.LIVE_STRIPE_PUBLISH_KEY;
+const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY)
+// const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
+// const stripe_publishable_key = process.env.TEST_STRIPE_PUBLISH_KEY;
 
 // TODO - take application fee amount
 const getRaffleDataFromFirestore = async (raffleId: string): Promise<IDrawDataFromFirestoreType | null> => {
