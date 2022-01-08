@@ -1,1 +1,0 @@
-const stripeSecretTestKey = 'sk_test_51H0IWVL4UppL0br2mRIA32VqHbDXIXGdOAmnEQloIisFwQKcvEVb5WgVuClYWEVOzSU52foQDPMzUNuBa9cZuSCv00CsXePgKR';

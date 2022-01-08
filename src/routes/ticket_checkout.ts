@@ -8,13 +8,14 @@ const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY)
 // const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
 // const stripe_publishable_key = process.env.TEST_STRIPE_PUBLISH_KEY;
 
-// TODO - take application fee amount
+const drawCollectionName = 'draws';
+const userCollectionName = 'users';
+
 const getRaffleDataFromFirestore = async (raffleId: string): Promise<IDrawDataFromFirestoreType | null> => {
-   const raffleRef = firestoreDb.collection('raffles').doc(raffleId);
+   const raffleRef = firestoreDb.collection(drawCollectionName).doc(raffleId);
    try {
       const raffleDocSnapshot = await raffleRef.get();
       if (raffleDocSnapshot.exists) {
-         // return raffleDocSnapshot.data();
          const raffleData = raffleDocSnapshot.data() as IDrawDataFromFirestoreType
          return raffleData;
       } else {
@@ -27,11 +28,10 @@ const getRaffleDataFromFirestore = async (raffleId: string): Promise<IDrawDataFr
    }
 }
 const getUserFromFirestore = async (userId: string): Promise<IUserData | null> => {
-   const userRef = firestoreDb.collection('users').doc(userId);
+   const userRef = firestoreDb.collection(userCollectionName).doc(userId);
    try {
       const userDocSnapshot = await userRef.get();
       if (userDocSnapshot.exists) {
-         // return userDocSnapshot.data();
          const userData = userDocSnapshot.data() as IUserData;
          return userData;
       } else {
@@ -44,7 +44,7 @@ const getUserFromFirestore = async (userId: string): Promise<IUserData | null> =
    }
 }
 const updateTicketsRemainingOnRaffleInFirestore = async (raffleId: string, numTicketsLeft: number) => {
-   const raffleRef = firestoreDb.collection('raffles').doc(raffleId);
+   const raffleRef = firestoreDb.collection(drawCollectionName).doc(raffleId);
    try {
       await raffleRef.update({
          numRemainingRaffleTickets: numTicketsLeft
@@ -112,12 +112,14 @@ router.post('/checkout/:raffleId', async (req: Request, res: Response) => {
                });
 
                const ticketsAvailable = raffleData.numRemainingRaffleTickets;
+               const ticketsSoldAlready = raffleData.numTotalRaffleTickets - ticketsAvailable;
                const ticketsRemaining = ticketsAvailable - amountOfTicketsPurchased;
                return res.json({
                   publishableKey: stripe_publishable_key,
                   id: paymentIntentResponse.id,
                   client_secret: paymentIntentResponse.client_secret,
-                  ticketsSold: amountOfTicketsPurchased,
+                  ticketsSoldAlready,
+                  newTicketsSold: amountOfTicketsPurchased,
                   sellerStripeAcctId: sellerStripeConnectId,
                   sellerUserId: raffleData.userUid,
                   ticketsRemaining,

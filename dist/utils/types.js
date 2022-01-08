@@ -12,3 +12,8 @@ var SneakerGender;
     SneakerGender[SneakerGender["mens"] = 0] = "mens";
     SneakerGender[SneakerGender["womens"] = 1] = "womens";
 })(SneakerGender || (SneakerGender = {}));
+var ITicketStatus;
+(function (ITicketStatus) {
+    ITicketStatus[ITicketStatus["available"] = 0] = "available";
+    ITicketStatus[ITicketStatus["sold"] = 1] = "sold";
+})(ITicketStatus || (ITicketStatus = {}));

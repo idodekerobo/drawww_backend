@@ -15,17 +15,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const router = express_1.default.Router();
 const firebase_1 = require("../utils/firebase");
-// const stripe_publishable_key = process.env.LIVE_STRIPE_PUBLISH_KEY;
-// const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY)
-const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY);
-const stripe_publishable_key = process.env.TEST_STRIPE_PUBLISH_KEY;
-// TODO - take application fee amount
+const stripe_publishable_key = process.env.LIVE_STRIPE_PUBLISH_KEY;
+const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY);
+// const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
+// const stripe_publishable_key = process.env.TEST_STRIPE_PUBLISH_KEY;
+const drawCollectionName = 'draws';
+const userCollectionName = 'users';
 const getRaffleDataFromFirestore = (raffleId) => __awaiter(void 0, void 0, void 0, function* () {
-    const raffleRef = firebase_1.firestoreDb.collection('raffles').doc(raffleId);
+    const raffleRef = firebase_1.firestoreDb.collection(drawCollectionName).doc(raffleId);
     try {
         const raffleDocSnapshot = yield raffleRef.get();
         if (raffleDocSnapshot.exists) {
-            // return raffleDocSnapshot.data();
             const raffleData = raffleDocSnapshot.data();
             return raffleData;
         }
@@ -40,11 +40,10 @@ const getRaffleDataFromFirestore = (raffleId) => __awaiter(void 0, void 0, void 
     }
 });
 const getUserFromFirestore = (userId) => __awaiter(void 0, void 0, void 0, function* () {
-    const userRef = firebase_1.firestoreDb.collection('users').doc(userId);
+    const userRef = firebase_1.firestoreDb.collection(userCollectionName).doc(userId);
     try {
         const userDocSnapshot = yield userRef.get();
         if (userDocSnapshot.exists) {
-            // return userDocSnapshot.data();
             const userData = userDocSnapshot.data();
             return userData;
         }
@@ -59,7 +58,7 @@ const getUserFromFirestore = (userId) => __awaiter(void 0, void 0, void 0, funct
     }
 });
 const updateTicketsRemainingOnRaffleInFirestore = (raffleId, numTicketsLeft) => __awaiter(void 0, void 0, void 0, function* () {
-    const raffleRef = firebase_1.firestoreDb.collection('raffles').doc(raffleId);
+    const raffleRef = firebase_1.firestoreDb.collection(drawCollectionName).doc(raffleId);
     try {
         yield raffleRef.update({
             numRemainingRaffleTickets: numTicketsLeft
@@ -123,12 +122,14 @@ router.post('/checkout/:raffleId', (req, res) => __awaiter(void 0, void 0, void 
                         }
                     });
                     const ticketsAvailable = raffleData.numRemainingRaffleTickets;
+                    const ticketsSoldAlready = raffleData.numTotalRaffleTickets - ticketsAvailable;
                     const ticketsRemaining = ticketsAvailable - amountOfTicketsPurchased;
                     return res.json({
                         publishableKey: stripe_publishable_key,
                         id: paymentIntentResponse.id,
                         client_secret: paymentIntentResponse.client_secret,
-                        ticketsSold: amountOfTicketsPurchased,
+                        ticketsSoldAlready,
+                        newTicketsSold: amountOfTicketsPurchased,
                         sellerStripeAcctId: sellerStripeConnectId,
                         sellerUserId: raffleData.userUid,
                         ticketsRemaining,
