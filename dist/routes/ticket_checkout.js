@@ -13,83 +13,22 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const router = express_1.default.Router();
+const firestore_1 = require("firebase-admin/firestore");
 const firebase_1 = require("../utils/firebase");
+const api_1 = require("../utils/api");
+const helpers_1 = require("../utils/helpers");
+const router = express_1.default.Router();
 const stripe_publishable_key = process.env.LIVE_STRIPE_PUBLISH_KEY;
 const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY);
 // const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
 // const stripe_publishable_key = process.env.TEST_STRIPE_PUBLISH_KEY;
-const drawCollectionName = 'draws';
-const userCollectionName = 'users';
-const getRaffleDataFromFirestore = (raffleId) => __awaiter(void 0, void 0, void 0, function* () {
-    const raffleRef = firebase_1.firestoreDb.collection(drawCollectionName).doc(raffleId);
-    try {
-        const raffleDocSnapshot = yield raffleRef.get();
-        if (raffleDocSnapshot.exists) {
-            const raffleData = raffleDocSnapshot.data();
-            return raffleData;
-        }
-        else {
-            console.log('raffle doesn\'t exist');
-            return null;
-        }
-    }
-    catch (err) {
-        console.log('error getting raffle from firestore');
-        return null;
-    }
-});
-const getUserFromFirestore = (userId) => __awaiter(void 0, void 0, void 0, function* () {
-    const userRef = firebase_1.firestoreDb.collection(userCollectionName).doc(userId);
-    try {
-        const userDocSnapshot = yield userRef.get();
-        if (userDocSnapshot.exists) {
-            const userData = userDocSnapshot.data();
-            return userData;
-        }
-        else {
-            console.log('user doesn\'t exist');
-            return null;
-        }
-    }
-    catch (err) {
-        console.log('error getting user from firestore');
-        return null;
-    }
-});
-const updateTicketsRemainingOnRaffleInFirestore = (raffleId, numTicketsLeft) => __awaiter(void 0, void 0, void 0, function* () {
-    const raffleRef = firebase_1.firestoreDb.collection(drawCollectionName).doc(raffleId);
-    try {
-        yield raffleRef.update({
-            numRemainingRaffleTickets: numTicketsLeft
-        });
-    }
-    catch (err) {
-        console.log('error updating raffle tickets remaining for raffle on firestore');
-        console.log(err);
-    }
-});
-const getTotalDollarAmountOfPurchase = (numTicketsPurchased, pricePerTicket) => {
-    const subtotal = numTicketsPurchased * pricePerTicket;
-    // TODO - how do i manage tax ???
-    const stripeTotal = subtotal * 100;
-    const applicationFee = stripeTotal * .05;
-    const priceObject = {
-        subtotal,
-        tax: 0,
-        total: subtotal,
-        stripeTotal,
-        applicationFee,
-    };
-    return priceObject;
-};
 router.post('/checkout/:raffleId', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     const { raffleId } = req.params;
     console.log('hitting checkout end point for draw', raffleId);
     const data = req.body;
     const { amountOfTicketsPurchased, receipt_email } = data;
-    const raffleData = yield getRaffleDataFromFirestore(raffleId);
+    const raffleData = yield (0, api_1.getRaffleDataFromFirestore)(raffleId);
     if (!raffleData) {
         console.log('error getting raffle data from firestore');
         res.statusMessage = 'There was an error on our side. Please try again later.';
@@ -105,10 +44,10 @@ router.post('/checkout/:raffleId', (req, res) => __awaiter(void 0, void 0, void 
     ;
     let stripeTotalPrice;
     if (raffleData) {
-        const userData = yield getUserFromFirestore(raffleData.userUid);
+        const userData = yield (0, api_1.getUserFromFirestore)(raffleData.userUid);
         if (userData) {
             const pricePerTicket = raffleData.pricePerRaffleTicket;
-            const pricing = getTotalDollarAmountOfPurchase(amountOfTicketsPurchased, pricePerTicket);
+            const pricing = (0, helpers_1.getTotalDollarAmountOfPurchase)(amountOfTicketsPurchased, pricePerTicket);
             stripeTotalPrice = pricing.stripeTotal;
             const sellerStripeConnectId = (_a = userData.stripeAccountData) === null || _a === void 0 ? void 0 : _a.accountId;
             if (sellerStripeConnectId) {
@@ -154,5 +93,37 @@ router.post('/checkout/:raffleId', (req, res) => __awaiter(void 0, void 0, void 
             }
         }
     }
+}));
+router.post('/checkout/:drawIdParam/success', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const data = req.body;
+    const { ticketsSoldAlready, ticketsRemaining } = data;
+    const orderData = data.orderData;
+    const { drawId, ticketsSold, buyerUserId, sellerUserId } = orderData;
+    console.log(`hitting fulfillment endpoint for ${drawId}`);
+    try {
+        // create new draw ref and add to firestore
+        const newTxnRef = firebase_1.firestoreDb.collection(api_1.txnCollectionName).doc();
+        const data = Object.assign({ id: newTxnRef.id, dateCompleted: firestore_1.Timestamp.now() }, orderData);
+        const savingTxnResponse = yield newTxnRef.set(data);
+        // console.log(savingTxnResponse);
+        try {
+            yield (0, api_1.updateDrawInFirestorePostTxn)(newTxnRef.id, drawId, buyerUserId, ticketsSold, ticketsSoldAlready, ticketsRemaining);
+        }
+        catch (err) {
+            console.log('error running the update draw function at /checkout/draw/success endpoint');
+            console.log(err);
+        }
+        try {
+            yield (0, api_1.updateUsersInFirestorePostTxn)(newTxnRef.id, buyerUserId, sellerUserId);
+        }
+        catch (err) {
+            console.log('error running the update user function at /checkout/draw/success endpoint');
+            console.log(err);
+        }
+    }
+    catch (err) {
+        console.log('error creating adding new transaction to the firestore');
+    }
+    res.send('updated firestore post transaction');
 }));
 module.exports = router;

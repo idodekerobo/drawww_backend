@@ -1,74 +1,16 @@
 import express, { Request, Response } from 'express';
-const router = express.Router();
+import { Timestamp } from 'firebase-admin/firestore';
 import { firestoreDb } from '../utils/firebase';
-import { IDrawDataFromFirestoreType, IUserData, IPricingObject } from '../utils/types';
+import { txnCollectionName, getRaffleDataFromFirestore, getUserFromFirestore, updateDrawInFirestorePostTxn, updateUsersInFirestorePostTxn } from '../utils/api';
+import { getTotalDollarAmountOfPurchase } from '../utils/helpers';
+import { IUserTransactionObject, ITransactionFirestoreObject } from '../utils/types';
+const router = express.Router();
 
 const stripe_publishable_key = process.env.LIVE_STRIPE_PUBLISH_KEY;
 const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY)
 // const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
 // const stripe_publishable_key = process.env.TEST_STRIPE_PUBLISH_KEY;
 
-const drawCollectionName = 'draws';
-const userCollectionName = 'users';
-
-const getRaffleDataFromFirestore = async (raffleId: string): Promise<IDrawDataFromFirestoreType | null> => {
-   const raffleRef = firestoreDb.collection(drawCollectionName).doc(raffleId);
-   try {
-      const raffleDocSnapshot = await raffleRef.get();
-      if (raffleDocSnapshot.exists) {
-         const raffleData = raffleDocSnapshot.data() as IDrawDataFromFirestoreType
-         return raffleData;
-      } else {
-         console.log('raffle doesn\'t exist');
-         return null;
-      }
-   } catch (err) {
-      console.log('error getting raffle from firestore')
-      return null;
-   }
-}
-const getUserFromFirestore = async (userId: string): Promise<IUserData | null> => {
-   const userRef = firestoreDb.collection(userCollectionName).doc(userId);
-   try {
-      const userDocSnapshot = await userRef.get();
-      if (userDocSnapshot.exists) {
-         const userData = userDocSnapshot.data() as IUserData;
-         return userData;
-      } else {
-         console.log('user doesn\'t exist');
-         return null;
-      }
-   } catch (err) {
-      console.log('error getting user from firestore')
-      return null;
-   }
-}
-const updateTicketsRemainingOnRaffleInFirestore = async (raffleId: string, numTicketsLeft: number) => {
-   const raffleRef = firestoreDb.collection(drawCollectionName).doc(raffleId);
-   try {
-      await raffleRef.update({
-         numRemainingRaffleTickets: numTicketsLeft
-      });
-   } catch (err) {
-      console.log('error updating raffle tickets remaining for raffle on firestore');
-      console.log(err);
-   }
-}
-const getTotalDollarAmountOfPurchase = (numTicketsPurchased: number, pricePerTicket: number): IPricingObject => {
-   const subtotal = numTicketsPurchased * pricePerTicket;
-   // TODO - how do i manage tax ???
-   const stripeTotal = subtotal*100
-   const applicationFee = stripeTotal*.05
-
-   const priceObject = {
-      subtotal, 
-      tax: 0,
-      total: subtotal,
-      stripeTotal,
-      applicationFee,
-   }
-   return priceObject;
-}
 router.post('/checkout/:raffleId', async (req: Request, res: Response) => {
    const { raffleId } = req.params;
    console.log('hitting checkout end point for draw', raffleId);
@@ -144,6 +86,45 @@ router.post('/checkout/:raffleId', async (req: Request, res: Response) => {
       }
    }
 
+})
+
+router.post('/checkout/:drawIdParam/success', async (req: Request, res: Response) => { 
+   const data = req.body;
+   const { ticketsSoldAlready, ticketsRemaining } = data;
+   const orderData: IUserTransactionObject = data.orderData;
+   const { drawId, ticketsSold, buyerUserId, sellerUserId } = orderData;
+   console.log(`hitting fulfillment endpoint for ${drawId}`)
+
+   try {
+      // create new draw ref and add to firestore
+      const newTxnRef  = firestoreDb.collection(txnCollectionName).doc();
+      const data: ITransactionFirestoreObject = {
+         id: newTxnRef.id,
+         dateCompleted: Timestamp.now(),
+         ...orderData
+      }
+      const savingTxnResponse = await newTxnRef.set(data);
+      // console.log(savingTxnResponse);
+
+      try {
+         await updateDrawInFirestorePostTxn(newTxnRef.id, drawId, buyerUserId, ticketsSold, ticketsSoldAlready, ticketsRemaining);
+      } catch (err) {
+         console.log('error running the update draw function at /checkout/draw/success endpoint')
+         console.log(err);
+      }
+
+      try {
+         await updateUsersInFirestorePostTxn(newTxnRef.id, buyerUserId, sellerUserId)
+      } catch (err) {
+         console.log('error running the update user function at /checkout/draw/success endpoint')
+         console.log(err);
+      }
+
+   } catch (err) {
+      console.log('error creating adding new transaction to the firestore')
+   }
+
+   res.send('updated firestore post transaction');
 })
 
 module.exports = router;
