@@ -1,122 +1,92 @@
 import express, { Request, Response } from 'express';
 import { Timestamp } from 'firebase-admin/firestore';
 import { firestoreDb } from '../utils/firebase';
-import { txnCollectionName, getRaffleDataFromFirestore, getUserFromFirestore, updateDrawInFirestorePostTxn, updateUsersInFirestorePostTxn } from '../utils/api';
+import { txnCollectionName, getRaffleDataFromFirestore, updateDrawInFirestorePostTxn, updateUsersInFirestorePostTxn } from '../utils/api';
 import { getTotalDollarAmountOfPurchase } from '../utils/helpers';
-import { IUserTransactionObject, ITransactionFirestoreObject } from '../utils/types';
+import { IPaypalTransactionFirestoreObject } from '../utils/types';
 const router = express.Router();
 
-const stripe_publishable_key = process.env.LIVE_STRIPE_PUBLISH_KEY;
-const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY)
-// const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
-// const stripe_publishable_key = process.env.TEST_STRIPE_PUBLISH_KEY;
 
-router.post('/checkout/:raffleId', async (req: Request, res: Response) => {
-   const { raffleId } = req.params;
-   console.log('hitting checkout end point for draw', raffleId);
+
+router.post('/paypal_checkout/request/:drawId',  async(req: Request, res: Response) => {
+   const { drawId } = req.params;
+   console.log('hitting checkout request end point for draw', drawId);
+
+   const drawData = await getRaffleDataFromFirestore(drawId);
    const data = req.body;
-   const { amountOfTicketsPurchased, receipt_email } = data;
+   const { amountOfTicketsPurchased } = data;
 
-   const raffleData = await getRaffleDataFromFirestore(raffleId);
-
-   if (!raffleData) {
+   if (!drawData) {
       console.log('error getting raffle data from firestore');
       res.statusMessage = 'There was an error on our side. Please try again later.';
-      res.status(500).end();
-      return;
+      // res.status(500).end();
+      return res.json({
+         valid: false
+      })
    }
-   if ( !(raffleData.numRemainingRaffleTickets >= amountOfTicketsPurchased) ) {
+
+   if ( !(drawData.numRemainingRaffleTickets >= amountOfTicketsPurchased) ) {
       console.log('not enough tickets');
       res.statusMessage = 'There are not enough tickets available for purchase.'
-      res.status(400).end();
-      return;
-   };
-
-   let stripeTotalPrice: number;
-   if (raffleData) {
-      const userData = await getUserFromFirestore(raffleData.userUid);
-      if (userData) {
-         const pricePerTicket = raffleData.pricePerRaffleTicket;
-         const pricing = getTotalDollarAmountOfPurchase(amountOfTicketsPurchased, pricePerTicket);
-         stripeTotalPrice = pricing.stripeTotal;
-
-
-         const sellerStripeConnectId = userData.stripeAccountData?.accountId;
-         if (sellerStripeConnectId) {
-            try {
-               const paymentIntentResponse = await stripe.paymentIntents.create({
-                  payment_method_types: ['card'], amount: stripeTotalPrice, currency: 'usd',
-                  application_fee_amount: pricing.applicationFee,
-                  receipt_email,
-                  transfer_data: {
-                     destination: sellerStripeConnectId
-                  }
-               });
-
-               const ticketsAvailable = raffleData.numRemainingRaffleTickets;
-               const ticketsSoldAlready = raffleData.numTotalRaffleTickets - ticketsAvailable;
-               const ticketsRemaining = ticketsAvailable - amountOfTicketsPurchased;
-               return res.json({
-                  publishableKey: stripe_publishable_key,
-                  id: paymentIntentResponse.id,
-                  client_secret: paymentIntentResponse.client_secret,
-                  ticketsSoldAlready,
-                  newTicketsSold: amountOfTicketsPurchased,
-                  sellerStripeAcctId: sellerStripeConnectId,
-                  sellerUserId: raffleData.userUid,
-                  ticketsRemaining,
-                  subtotalDollarAmount: pricing.subtotal,
-                  taxDollarAmount: pricing.tax,
-                  totalDollarAmount: pricing.total,
-               });
-               
-            } catch (err) {
-               console.log('err making payment to user');
-               console.log(err);
-               res.statusMessage = 'There was an error on our side. Please try again later.'
-               res.status(500).send({
-                  error: err
-               });
-            }
-         } else {
-            console.log('seller not on stripe');
-            res.statusMessage = 'Seller is not eligible for payouts.'
-            res.status(400).end();
-         }
-      }
+      // res.status(400).end();
+      return res.json({
+         valid: false
+      })
    }
 
+   const pricing = getTotalDollarAmountOfPurchase(amountOfTicketsPurchased, drawData.pricePerRaffleTicket);
+   return res.json({
+      valid: true,
+      totalDollarAmount: pricing.total,
+   })
 })
 
-router.post('/checkout/:drawIdParam/success', async (req: Request, res: Response) => { 
-   const data = req.body;
-   const { ticketsSoldAlready, ticketsRemaining } = data;
-   const orderData: IUserTransactionObject = data.orderData;
-   const { drawId, ticketsSold, buyerUserId, sellerUserId } = orderData;
-   console.log(`hitting fulfillment endpoint for ${drawId}`)
+router.post('/paypal_checkout/success', async (req: Request, res: Response) => {
+   console.log(`hitting fulfillment logic endpoint`)
+   const { userOrderData } = req.body;
+   const { drawId, ticketsSold, buyerUserId, sellerUserId } = userOrderData;
+
+   const drawData = await getRaffleDataFromFirestore(drawId);
+
+   if (!drawData) {
+      res.statusMessage = 'There was an error on our side. Please try again later.'
+      res.status(500).send({
+         status: 'There was an error retrieving draw from firestore to do post txn logic.'
+      });
+      return;
+   }
+   const pricing = getTotalDollarAmountOfPurchase(ticketsSold, drawData.pricePerRaffleTicket);
+   const ticketsAvailable = drawData.numRemainingRaffleTickets;
+   const ticketsSoldAlready = drawData.numTotalRaffleTickets - ticketsAvailable;
+   const ticketsRemaining = ticketsAvailable - ticketsSold;
 
    try {
       // create new draw ref and add to firestore
       const newTxnRef  = firestoreDb.collection(txnCollectionName).doc();
-      const data: ITransactionFirestoreObject = {
+
+      const fullOrderData: IPaypalTransactionFirestoreObject = {
          id: newTxnRef.id,
          dateCompleted: Timestamp.now(),
-         ...orderData
+         ticketsSold: ticketsSold,
+         subtotalDollarAmount: pricing.subtotal,
+         taxDollarAmount: pricing.tax,
+         totalDollarAmount: pricing.total,
+         ...userOrderData
       }
-      const savingTxnResponse = await newTxnRef.set(data);
-      // console.log(savingTxnResponse);
+      console.log(fullOrderData);
+      const savingTxnResponse = await newTxnRef.set(fullOrderData);
 
       try {
          await updateDrawInFirestorePostTxn(newTxnRef.id, drawId, buyerUserId, ticketsSold, ticketsSoldAlready, ticketsRemaining);
       } catch (err) {
-         console.log('error running the update draw function at /checkout/draw/success endpoint')
+         console.log('error running the update draw function at /paypal_checkout/success endpoint')
          console.log(err);
       }
 
       try {
          await updateUsersInFirestorePostTxn(newTxnRef.id, buyerUserId, sellerUserId)
       } catch (err) {
-         console.log('error running the update user function at /checkout/draw/success endpoint')
+         console.log('error running the update user function at /paypal_checkout/success endpoint')
          console.log(err);
       }
 

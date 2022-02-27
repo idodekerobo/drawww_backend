@@ -70,24 +70,41 @@ enum ITicketStatus {
    "available" = 0,
    "sold" = 1,
 }
-
-export interface IUserTransactionObject {
+// export interface IUserTransactionObject {
+//    sellerUserId: string,
+//    sellerStripeAcctId: string,
+//    stripePaymentIntentId: string,
+//    drawId :string,
+//    ticketsSold: number, 
+//    buyerUserId: string,
+//    subtotalDollarAmount: number,
+//    taxDollarAmount: number,
+//    totalDollarAmount: number,
+//    nameOnCard: string,
+//    emailAddress: string,
+// }
+export interface IUserPayPalTxnObject {
    sellerUserId: string,
-   sellerStripeAcctId: string,
-   stripePaymentIntentId: string,
-   drawId :string,
-   ticketsSold: number, 
    buyerUserId: string,
+   drawId: string,
+   ticketsSold: number,
+   buyerEmailAddress: string,
+   buyerPayerName: string,
+   paypalOrderId: string,
+   paypalOrderData: {} // TODO - import paypal details object (OrderResponseBody)
+}
+export interface IPaypalTransactionFirestoreObject extends IUserPayPalTxnObject {
+   id: string,
+   dateCompleted: Timestamp,
+   ticketsSold: number,
    subtotalDollarAmount: number,
    taxDollarAmount: number,
    totalDollarAmount: number,
-   nameOnCard: string,
-   emailAddress: string,
 }
-export interface ITransactionFirestoreObject extends IUserTransactionObject {
-   id: string,
-   dateCompleted: Timestamp,
-}
+// export interface ITransactionFirestoreObject extends IUserTransactionObject {
+//    id: string,
+//    dateCompleted: Timestamp,
+// }
 export interface IPricingObject {
    subtotal: number, 
    tax: number,
