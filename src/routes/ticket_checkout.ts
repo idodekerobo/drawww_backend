@@ -6,8 +6,6 @@ import { getTotalDollarAmountOfPurchase } from '../utils/helpers';
 import { IPaypalTransactionFirestoreObject } from '../utils/types';
 const router = express.Router();
 
-
-
 router.post('/paypal_checkout/request/:drawId',  async(req: Request, res: Response) => {
    const { drawId } = req.params;
    console.log('hitting checkout request end point for draw', drawId);

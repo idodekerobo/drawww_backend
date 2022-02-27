@@ -5,6 +5,7 @@ import { firestoreDb } from '../utils/firebase';
 // const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
 const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY);
 
+// TODO - deprecate stripe logic
 router.get('/connect_seller/:userId', async (req: Request, res: Response) => {
    const { userId } = req.params;
    try {

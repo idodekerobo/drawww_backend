@@ -17,6 +17,7 @@ const router = express_1.default.Router();
 const firebase_1 = require("../utils/firebase");
 // const stripe = require('stripe')(process.env.TEST_STRIPE_SECRET_KEY)
 const stripe = require('stripe')(process.env.LIVE_STRIPE_SECRET_KEY);
+// TODO - deprecate stripe logic
 router.get('/connect_seller/:userId', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { userId } = req.params;
     try {
