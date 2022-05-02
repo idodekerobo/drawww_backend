@@ -9,27 +9,29 @@ export interface IUserData {
    emailAddress?: string,
    shoeGender: SneakerGender,
    shoeSize: string,
+   // enteredDraws?: Map<string, number>,
+   enteredDraws?: {
+      [drawId: string]: number
+   },
    buyerTransactions: DocumentReference[],
    sellerTransactions: DocumentReference[],
    sellerWaitlist?: boolean,
-   eligibleToOnboardToStripe?: boolean,
-   sellerOnboardedToStripe?: SellerStripeOnboardingStatus,
-   stripeAccountData?: IStripeUserData
+   paymentDataOnFile?: boolean,
+   paymentData?: PaymentData,
 }
+interface PaymentData {
+   braintree: {},
+}
+// braintree data to add
+   // customer id
+   // token ? ?
+
 export enum SellerStripeOnboardingStatus {
    "not_onboarded" = 0,
    "partially_onboarded" = 1,
    "completely_onboarded" = 2
 }
-export interface IStripeUserData {
-   accountId: string,
-   // the rest of the parameters are optional because of partial onboarding
-   email?: string,
-   business?: string,
-   country?: string,
-   defaultCurrency?: string,
-   statementDescriptor?: string,
-}
+
 enum SneakerGender {
    "mens" = 0,
    "womens" = 1,
@@ -64,6 +66,7 @@ interface IDrawTicket {
    status: ITicketStatus,
    raffleId: string,
    buyerId?: string,
+   paid: boolean,
    transactionId?: string,
 }
 enum ITicketStatus {
