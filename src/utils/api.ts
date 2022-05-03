@@ -40,8 +40,7 @@ export const getUserFromFirestore = async (userId: string): Promise<IUserData | 
    }
 }
 
-// export const updateUserPaymentMethod = async (userId: string, braintreeId: string, paymentToken: string): Promise<IUserData | null> => {
-export const updateUserPaymentMethod = async (userId: string, braintreeCustomerId: string, paymentToken: string, drawId: string) => {
+export const updateUserPaymentMethod = async (userId: string, braintreeCustomerId: string, paymentToken: string) => {
    const userRef = firestoreDb.collection(userCollectionName).doc(userId);
    try {
       const response = await userRef.set({
@@ -56,6 +55,16 @@ export const updateUserPaymentMethod = async (userId: string, braintreeCustomerI
    } catch (err) {
       console.log('error updating buyer user data with payment method')
       console.log(err);
+   }
+}
+export const confirmUserHasPaymentOnFile = async (userId: string): Promise<boolean> => {
+   const userData = await getUserFromFirestore(userId);
+   if (!userData) return false;
+   const paymentDataOnFile = userData.paymentDataOnFile;
+   if (paymentDataOnFile) {
+      return true;
+   } else {
+      return false;
    }
 }
 const firestoreMapConverter = {
@@ -125,10 +134,11 @@ export const addDrawToUserObject = async (userId: string, drawId: string, number
          }, { merge: true })
 
       } else {
-         
          // console.log('this draw already entered, need to update');
          // console.log(usersEnteredDraws);
-         usersEnteredDraws[drawId] = numberTicketsAcquired
+         const existingNumberOfTickets = usersEnteredDraws[drawId];
+         const newNumberOfTickets = existingNumberOfTickets + numberTicketsAcquired
+         usersEnteredDraws[drawId] = newNumberOfTickets;
          // console.log(usersEnteredDraws);
          const response = await userRef.set({
             enteredDraws: usersEnteredDraws

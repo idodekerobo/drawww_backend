@@ -4,7 +4,8 @@ import { BraintreeGateway, Environment, ValidatedResponse,ClientToken, ServerErr
 import { Timestamp } from 'firebase-admin/firestore';
 import { firestoreDb } from '../utils/firebase';
 import { getUserFromFirestore, txnCollectionName, getRaffleDataFromFirestore, updateDrawInFirestorePostTxn,
-   updateUsersInFirestorePostTxn, updateUserPaymentMethod, addDrawToUserObject, addUserToDrawObject } from '../utils/api';
+   updateUsersInFirestorePostTxn, updateUserPaymentMethod, addDrawToUserObject, addUserToDrawObject,
+   confirmUserHasPaymentOnFile } from '../utils/api';
 import { getTotalDollarAmountOfPurchase } from '../utils/helpers';
 import { IPaypalTransactionFirestoreObject } from '../utils/types';
 const router = express.Router();
@@ -83,7 +84,7 @@ router.post('/enter_draw/:drawId/new_customer', async (req: Request, res: Respon
       // 2. edit buyer's firebase object to show they have payment on file and they entererd draw
       // a. add customer braintree id and payment token
       // b. paymentOnFile = true
-      updateUserPaymentMethod(buyerUserId, braintreeCustomerId, paymentToken, drawId); // async function
+      updateUserPaymentMethod(buyerUserId, braintreeCustomerId, paymentToken); // async function
 
       const drawData = await getRaffleDataFromFirestore(drawId);
       if (!drawData) {
@@ -117,12 +118,51 @@ router.post('/enter_draw/:drawId/new_customer', async (req: Request, res: Respon
 });
 
 router.post('/enter_draw/:drawId/existing_customer', async (req: Request, res: Response) => {
-/*
-   no need to do anything w/ braintree.
-   1. confirm that user has payment on file 
-   2. update draw object to show new tickets acquired
-   3. update user object to show new tickets acquired
-*/
+   
+   // NO NEED TO DO ANYTHING WITH BRAINTREE SINCE CUSTOMER HAS PAYMENT ON FILE
+
+   const { drawId } = req.params;
+   const data = req.body;
+   const { firstName, lastName, buyerUserId, numberTicketsAcquired } = data;
+   try {
+      // 1. confirm that user has payment on file 
+      const userHasPaymentOnFile = await confirmUserHasPaymentOnFile(buyerUserId);
+      if (!userHasPaymentOnFile) {
+         return res.json({
+            success: false
+         })  
+      }
+      
+      const drawData = await getRaffleDataFromFirestore(drawId);
+      if (!drawData) {
+         res.statusMessage = 'There was an error on our side. Please try again later.'
+         res.status(500).send({
+            status: 'There was an error retrieving draw from firestore to do post upd logic.'
+         });
+         return res.json({
+            success: false
+         });
+      }
+      
+      // 2. edit user firebase object to show that they entered the draw
+      addDrawToUserObject(buyerUserId, drawId, numberTicketsAcquired); // async function
+      
+      // 3. edit draw's firebase object to show that this user has entered the draw
+      const ticketsAvailable = drawData.numRemainingRaffleTickets;
+      const ticketsRemaining = ticketsAvailable - numberTicketsAcquired;
+      addUserToDrawObject(buyerUserId, drawId, numberTicketsAcquired, ticketsRemaining);
+
+      return res.json({
+         success: true
+      })
+
+   } catch (err) {
+      console.log(err);
+      return res.json({
+         success: false
+      });
+   }
+
 
 });
 
