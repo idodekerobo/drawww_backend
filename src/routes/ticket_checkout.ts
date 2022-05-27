@@ -4,8 +4,8 @@ import { BraintreeGateway, Environment, ValidatedResponse,ClientToken, ServerErr
 import { Timestamp } from 'firebase-admin/firestore';
 import { firestoreDb } from '../utils/firebase';
 import { getUserFromFirestore, txnCollectionName, getRaffleDataFromFirestore, updateDrawInFirestorePostTxn,
-   updateUsersInFirestorePostTxn, updateUserPaymentMethod, addDrawToUserObject, addUserToDrawObject,
-   confirmUserHasPaymentOnFile } from '../utils/api';
+   updateUsersInFirestorePostTxn, updateUserPaymentMethod, addDrawToUserObject, addUserToDrawObjectAfterEnteringDraw,
+   confirmUserHasPaymentOnFile, getFirestoreDocumentFromReference, addTransactionToFirestore, updateTicketStatusInFirestore } from '../utils/api';
 import { getTotalDollarAmountOfPurchase } from '../utils/helpers';
 import { IPaypalTransactionFirestoreObject } from '../utils/types';
 const router = express.Router();
@@ -101,7 +101,7 @@ router.post('/enter_draw/:drawId/new_customer', async (req: Request, res: Respon
       // 4. edit draw's firebase object to show that this user has entered the draw
       const ticketsAvailable = drawData.numRemainingRaffleTickets;
       const ticketsRemaining = ticketsAvailable - numberTicketsAcquired;
-      addUserToDrawObject(buyerUserId, drawId, numberTicketsAcquired, ticketsRemaining);
+      addUserToDrawObjectAfterEnteringDraw(buyerUserId, drawId, numberTicketsAcquired, ticketsRemaining);
 
       return res.json({
          success: result.success,
@@ -150,7 +150,7 @@ router.post('/enter_draw/:drawId/existing_customer', async (req: Request, res: R
       // 3. edit draw's firebase object to show that this user has entered the draw
       const ticketsAvailable = drawData.numRemainingRaffleTickets;
       const ticketsRemaining = ticketsAvailable - numberTicketsAcquired;
-      addUserToDrawObject(buyerUserId, drawId, numberTicketsAcquired, ticketsRemaining);
+      addUserToDrawObjectAfterEnteringDraw(buyerUserId, drawId, numberTicketsAcquired, ticketsRemaining);
 
       return res.json({
          success: true
@@ -162,9 +162,105 @@ router.post('/enter_draw/:drawId/existing_customer', async (req: Request, res: R
          success: false
       });
    }
-
-
 });
+
+router.post('/close_draw/:drawId', async (req: Request, res: Response) => {
+   const { drawId } = req.params;
+   console.log('closing draw endpoint');
+   const drawData = await getRaffleDataFromFirestore(drawId);
+
+   if (!drawData) {
+      res.statusMessage = 'There was an error and the draw was not found.';
+      return res.json({
+         success: false,
+         result: 'draw not found'
+      });
+   }
+   if (process.env.BRAINTREE_MERCHANT_ID == undefined || process.env.BRAINTREE_PUBLIC_KEY == undefined || process.env.BRAINTREE_PRIVATE_KEY == undefined) {
+      // TODO - handle error getting braintree creds on the server
+      res.statusMessage = 'There was an error getting payment gateway information.';
+      return res.json({
+         success: false,
+         result: 'error getting payment gateway information'
+      });
+   }
+   const gateway = new BraintreeGateway({
+      environment: Environment.Sandbox,
+      merchantId: process.env.BRAINTREE_MERCHANT_ID,
+      publicKey: process.env.BRAINTREE_PUBLIC_KEY,
+      privateKey: process.env.BRAINTREE_PRIVATE_KEY
+   })
+   
+   const buyerTicketMapObject = drawData.buyerTickets;
+   for (const buyerUserId in buyerTicketMapObject) {
+      console.log(`${buyerUserId}`)
+      console.log(buyerTicketMapObject[buyerUserId]);
+
+      const userData = await getUserFromFirestore(buyerUserId);
+      if (!userData) {
+         console.log(`user data for user ${buyerUserId} not found`);
+         continue;
+      }
+      if (!userData.paymentDataOnFile) {
+         console.log(`user ${buyerUserId} doesn't have payment data on file`);
+         // TODO - need to do somthing if user doesn't have payment data on file
+         continue;
+      }
+      if (!userData.paymentData) {
+         continue;
+      }
+      const braintreePaymentObject = userData.paymentData.braintree;
+      const braintreeCustomerId = braintreePaymentObject.id;
+      const braintreePaymentMethodToken = braintreePaymentObject.paymentToken;
+      const numTicketsBought = buyerTicketMapObject[buyerUserId].numTickets;
+      const userClaimedTicketArr = buyerTicketMapObject[buyerUserId].ticketArr;
+      const pricing = getTotalDollarAmountOfPurchase(numTicketsBought, drawData.pricePerRaffleTicket);
+      const total = pricing.total;
+
+      // 1. make transaction for total amount of tickets
+      const txnResult = await gateway.transaction.sale({
+         // amount: ``,
+         // paymentMethodToken: '',
+         amount: `${total}`,
+         paymentMethodToken: braintreePaymentMethodToken,
+         options: {
+            submitForSettlement: true,
+         }
+      })  
+      console.log(txnResult.success)
+      console.log(txnResult);
+
+      if (txnResult.success) {
+         console.log('txn is successful - do stuff');
+         
+         // 2. make a transaction data object for firestore
+         const braintreeTxnId = txnResult.transaction.id;
+         const txnReference = await addTransactionToFirestore(drawId, buyerUserId, drawData.sellerUserId, pricing, numTicketsBought, userClaimedTicketArr, braintreeCustomerId, braintreeTxnId);
+
+         // 3. edit ticket data
+         for (let i=0; i < userClaimedTicketArr.length; i++) {
+            const ticketId = userClaimedTicketArr[i];
+            await updateTicketStatusInFirestore(ticketId, 2, true, txnReference?.id)
+         }
+
+         // 4. update amount of tickets sold on draw and transaction ref to draw
+         if (txnReference) {
+            await updateDrawInFirestorePostTxn(drawId, txnReference, numTicketsBought, drawData.soldRaffleTickets)
+         } else {
+            console.log('txn reference is null');
+         }
+      } else {
+         // tell server the txn wasn't successful
+         return res.json({
+            success: false,
+         })
+      }
+   }
+
+   return res.json({
+      success: true,
+   })
+})
 
 router.post('/paypal_checkout/request/:drawId',  async(req: Request, res: Response) => {
    const { drawId } = req.params;
@@ -235,10 +331,10 @@ router.post('/paypal_checkout/success', async (req: Request, res: Response) => {
       const savingTxnResponse = await newTxnRef.set(fullOrderData);
 
       try {
-         await updateDrawInFirestorePostTxn(newTxnRef.id, drawId, buyerUserId, ticketsSold, ticketsSoldAlready, ticketsRemaining);
+         // await updateDrawInFirestorePostTxn(newTxnRef.id, drawId, buyerUserId, ticketsSold, ticketsSoldAlready, ticketsRemaining);
       } catch (err) {
-         console.log('error running the update draw function at /paypal_checkout/success endpoint')
-         console.log(err);
+         // console.log('error running the update draw function at /paypal_checkout/success endpoint')
+         // console.log(err);
       }
 
       try {

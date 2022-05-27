@@ -1,10 +1,11 @@
 import { firestoreDb } from './firebase';
-import { FieldValue } from 'firebase-admin/firestore';
-import { IDrawDataFromFirestoreType, IUserData } from './types';
+import { DocumentData, FieldValue, DocumentReference } from 'firebase-admin/firestore';
+import { IDrawDataFromFirestoreType, IUserData, IDrawTicket, IPricingObject, ITicketStatus } from './types';
 
 export const drawCollectionName = 'draws';
 const userCollectionName = 'users';
 export const txnCollectionName = 'transactions';
+export const ticketCollectionName = 'tickets';
 
 export const getRaffleDataFromFirestore = async (raffleId: string): Promise<IDrawDataFromFirestoreType | null> => {
    const raffleRef = firestoreDb.collection(drawCollectionName).doc(raffleId);
@@ -39,7 +40,22 @@ export const getUserFromFirestore = async (userId: string): Promise<IUserData | 
       return null;
    }
 }
-
+export const getFirestoreDocumentFromReference = async (ref: DocumentReference): Promise<DocumentData | null> => {
+   try {
+      const firestoreObject = await ref.get();
+      if (firestoreObject.exists) {
+         const objectData = firestoreObject.data() as IDrawTicket;
+         return objectData;
+      } else {
+         console.log('firestore object does not exist');
+         return null;
+      }
+   } catch (err) {
+      console.log('error getting firestore object from firestore');
+      console.log(err);
+      return null;
+   }
+}
 export const updateUserPaymentMethod = async (userId: string, braintreeCustomerId: string, paymentToken: string) => {
    const userRef = firestoreDb.collection(userCollectionName).doc(userId);
    try {
@@ -67,36 +83,7 @@ export const confirmUserHasPaymentOnFile = async (userId: string): Promise<boole
       return false;
    }
 }
-const firestoreMapConverter = {
-   toFirestore: (mapObj: { drawId: string, enteredDraws: Map<string, number> }) => {
-      console.log()
-      console.log('map object');
-      console.log(mapObj);
 
-      console.log()
-      console.log('entered draws')
-      console.log(mapObj.enteredDraws);
-      
-      console.log()
-      const { drawId } = mapObj;
-      console.log('get drawId', drawId)
-      console.log(mapObj.enteredDraws.get(drawId));
-      
-      return {
-         drawId: mapObj.enteredDraws.get(drawId),
-         // numberOfTickets: mapObj.get('numberOfTickets'),
-      }
-   },
-   fromFirestore: (
-      // snapshot:firestoreDb.QueryDocumentSnapshot,
-      // options: firestoreDb.SnapshotOptions
-      snapshot: any,
-      options: any
-      ) => {
-      const data = snapshot.data(options);
-      return new Map<string, number>(Object.entries(data));
-   }
-}
 export const addDrawToUserObject = async (userId: string, drawId: string, numberTicketsAcquired: number) => {
    const userData = await getUserFromFirestore(userId);
    if (userData === null || undefined) return; // TODO - figure out better error handling if draw data is null or not defined
@@ -151,8 +138,7 @@ export const addDrawToUserObject = async (userId: string, drawId: string, number
    }
 }
 
-// TODO - need to make sure that users are only adding the difference and not incremental when updating tickets
-export const addUserToDrawObject = async (buyerUserId: string, drawId: string, numTicketsSold: number, ticketsRemaining: number) => {
+export const addUserToDrawObjectAfterEnteringDraw = async (buyerUserId: string, drawId: string, numTicketsClaimed: number, ticketsRemaining: number) => {
    /*
       1/ update draw ticket array to show the usr has entered and how many tickets
          a/ buyerTickets array
@@ -169,41 +155,67 @@ export const addUserToDrawObject = async (buyerUserId: string, drawId: string, n
    if (drawData === null || undefined) return; // TODO - figure out better error handling if draw data is null or not defined
 
    try {
-      
-      let addToArr: string[] = [];
-      for (let i=0; i < numTicketsSold; i++) {
-         addToArr.push(buyerUserId);
-      }
-      const updatedBuyerTicketArr = [ ...drawData.buyerTickets, ...addToArr ]
+      const buyerTicketMap = drawData.buyerTickets;
 
       // existing tickets obj array
-      let newTicketsArr = drawData.tickets;
+      let ticketRefArr = drawData.tickets;
       let ticketsUpdated = 0;
+      let updatedTicketArr: string[] = []
       
-      for (let i=0; i < newTicketsArr.length; i++) {
-         let checkTicket = newTicketsArr[i];
-         if (checkTicket.status === 1) continue; // if ticket is sold skip to next iteration
+      // TODO - test that updated changes to ticket collection works
+      for (let i=0; i < ticketRefArr.length; i++) {
+         const ticketRef = ticketRefArr[i];
+         let currentlyCheckedTicket = await getFirestoreDocumentFromReference(ticketRef) as IDrawTicket | null;
+         if (!currentlyCheckedTicket) continue; // if ticket is null or undefined continue
+         if (currentlyCheckedTicket.status > 0) continue; // if ticket is claimed or sold skip to next iteration
 
-         if (checkTicket.status === 0) {
-            checkTicket.status = 1;
-            checkTicket.buyerId = buyerUserId;
-            // checkTicket.paid = false;
-            // checkTicket.transactionId = txnId;
+         if (currentlyCheckedTicket.status === 0) { // if ticket is available, do stuff
+            currentlyCheckedTicket.status = 1;
+            currentlyCheckedTicket.buyerUserId = buyerUserId;
+            currentlyCheckedTicket.paid = false;
+            updatedTicketArr.push(currentlyCheckedTicket.id);
             ticketsUpdated += 1;
+
+            console.log('new ticket data for ticket id:', currentlyCheckedTicket.id);
+            console.log(currentlyCheckedTicket);
+
+            // updating ticket to reflect new status in firestore
+            try {
+               const response = await ticketRef.set(currentlyCheckedTicket)
+            } catch (err) {
+               console.log('error updating ticket objct after ticket was claimed for ticket id:', currentlyCheckedTicket.id, 'and buyer id: ', currentlyCheckedTicket.buyerUserId);
+            }
          }
-         if (ticketsUpdated === numTicketsSold) break; // if you've updated the needed amount of tickets break for loop
+         if (ticketsUpdated === numTicketsClaimed) break; // if you've updated the needed amount of tickets break for loop
       }
 
+      // if the draw doesn't have user, add user and tickets
+      if ( !(buyerTicketMap[buyerUserId]) ) {
+         buyerTicketMap[buyerUserId] = {
+            numTickets: numTicketsClaimed,
+            ticketArr: updatedTicketArr
+         }
+      } else {
+         // if draw already has the user, update the tickets
+         const existingNumTickets = buyerTicketMap[buyerUserId].numTickets;
+         const newNumberOfTickets = existingNumTickets + numTicketsClaimed;
+         const usersTicketsIds = buyerTicketMap[buyerUserId].ticketArr;
+         buyerTicketMap[buyerUserId] = {
+            numTickets: newNumberOfTickets,
+            ticketArr: [...usersTicketsIds, ...updatedTicketArr]
+         }
+      }
+      
+      // update the draw object with new buyerTicketMap and remaining number of tickets
       const response = await drawRef.update({
-         buyerTickets: updatedBuyerTicketArr,
-         tickets: newTicketsArr,
+         buyerTickets: buyerTicketMap,
          numRemainingRaffleTickets: ticketsRemaining
       })
    } catch (err) {
       console.log(`error updating draw object after user joined`);
       console.log(`draw id ${drawId}`);
       console.log(`user id ${buyerUserId}`);
-      console.log(`number of tickets ${numTicketsSold}`);
+      console.log(`number of tickets ${numTicketsClaimed}`);
       console.log(err);
    }
 }
@@ -220,45 +232,50 @@ const updateTicketsRemainingOnRaffleInFirestore = async (raffleId: string, numTi
    }
 }
 
-export const updateDrawInFirestorePostTxn = async (txnId: string, drawId: string, buyerUserId: string, ticketsSold: number, ticketsSoldAlready: number, ticketsRemaining: number) => {
-   
+export const addTransactionToFirestore = async (drawId: string, buyerUserId: string, sellerUserId: string, pricingObject: IPricingObject, numTickets: number, ticketIds: string[], braintreeCustomerId: string, braintreeTxnId: string): Promise<DocumentReference | null> => {
+   const newTxnRef = firestoreDb.collection(txnCollectionName).doc();
    try {
-      const txnRef = firestoreDb.collection(txnCollectionName).doc(txnId);
+      const response = await newTxnRef.set({
+         id: newTxnRef.id,
+         drawId,
+         buyerUserId,
+         sellerUserId,
+         ticketIds,
+         ticketsSold: numTickets,
+         subtotalDollarAmount: pricingObject.subtotal,
+         taxDollarAmount: pricingObject.tax,
+         totalDollarAmount: pricingObject.total,
+         braintreeTxnId,
+         braintreeCustomerId,
+      })
+      return newTxnRef;
+   } catch (err) {
+      console.log('error adding transaction to firestore');
+      console.log(err);
+      return null;
+   }
+}
 
-      const drawData = await getRaffleDataFromFirestore(drawId);
-      if (drawData === null || undefined) return; // TODO - figure out better error handling if draw data is null or not defined
-      
-      // existing tickets obj array
-      let newTicketsArr = drawData.tickets;
-      let ticketsUpdated = 0;
-      
-      for (let i=0; i < newTicketsArr.length; i++) {
-         let checkTicket = newTicketsArr[i];
-         if (checkTicket.status === 1) continue; // if ticket is sold skip to next iteration
+export const updateTicketStatusInFirestore = async (ticketId: string, ticketStatus: ITicketStatus, paid: boolean, transactionId?: string) => {
+   try {
+      const ticketRef = firestoreDb.collection(ticketCollectionName).doc(ticketId);
+      const response = await ticketRef.update({
+         status: ticketStatus,
+         paid,
+         transactionId
+      })
+   } catch (err) {
+      console.log('error updating ticket status for ticket id', ticketId);
+      console.log(err);
+   }
+}
 
-         if (checkTicket.status === 0) {
-            checkTicket.status = 1;
-            checkTicket.buyerId = buyerUserId;
-            checkTicket.transactionId = txnId;
-            ticketsUpdated += 1;
-         }
-         if (ticketsUpdated === ticketsSold) break; // if you've updated the needed amount of tickets break for loop
-      }
-
-      let addToArr: string[] = [];
-      for (let i=0; i < ticketsSold; i++) {
-         addToArr.push(buyerUserId);
-      }
-      const updatedBuyerTicketArr = [ ...drawData.buyerTickets, ...addToArr ]
-
-      const soldRaffleTickets = ticketsSoldAlready + ticketsSold;
-
-      const drawRef = firestoreDb.collection(drawCollectionName).doc(drawId);
+export const updateDrawInFirestorePostTxn = async (drawId: string, txnRef: DocumentReference, ticketsSold: number, ticketsSoldAlready: number,) => {
+   const soldRaffleTickets = ticketsSoldAlready + ticketsSold;
+   const drawRef = firestoreDb.collection(drawCollectionName).doc(drawId);
+   try {
       const updateDrawObjectResponse = await drawRef.update({
          transactions: FieldValue.arrayUnion(txnRef),
-         buyerTickets: updatedBuyerTicketArr,
-         tickets: newTicketsArr,
-         numRemainingRaffleTickets: ticketsRemaining,
          soldRaffleTickets,
       })
       // console.log(updateDrawObjectResponse);

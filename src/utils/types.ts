@@ -20,7 +20,10 @@ export interface IUserData {
    paymentData?: PaymentData,
 }
 interface PaymentData {
-   braintree: {},
+   braintree: {
+      id: string,
+      paymentToken: string 
+   },
 }
 // braintree data to add
    // customer id
@@ -37,7 +40,7 @@ enum SneakerGender {
    "womens" = 1,
 }
 export interface IUserDrawData {
-   userUid: string,
+   sellerUserId: string,
    sneakerGender: SneakerGender,
    raffleSneakerBrand: string,
    raffleSneakerName: string,
@@ -50,7 +53,7 @@ export interface IDrawDataFromFirestoreType extends IUserDrawData {
    id: string,
    active: boolean,
    raffleType: string,
-   tickets: IDrawTicket[],
+   tickets: DocumentReference[],
    numRemainingRaffleTickets: number,
    soldRaffleTickets: number,
    timeRaffleCreated: Timestamp,
@@ -58,34 +61,44 @@ export interface IDrawDataFromFirestoreType extends IUserDrawData {
    raffleImageStoragePath: string,
    raffleImageDownloadUrls: string[],
    transactions: DocumentReference[],
-   buyerTickets: string[]
+   // buyerTickets: string[],
+   buyerTickets: {
+      [buyerUserId: string]: {
+         numTickets: number,
+         ticketArr: string[],
+      }
+   }
 }
-interface IDrawTicket {
+export interface IDrawTicket {
    id: string,
-   number: number,
+   drawId: string,
+   sellerUserId: string,
+   drawTicketNumber: number, // 0-X depending on num of tickets in raffle
    status: ITicketStatus,
-   raffleId: string,
-   buyerId?: string,
    paid: boolean,
+   buyerUserId?: string,
    transactionId?: string,
 }
-enum ITicketStatus {
+export enum ITicketStatus {
    "available" = 0,
-   "sold" = 1,
+   "claimed" = 1,
+   "sold" = 2,
 }
-// export interface IUserTransactionObject {
-//    sellerUserId: string,
-//    sellerStripeAcctId: string,
-//    stripePaymentIntentId: string,
-//    drawId :string,
-//    ticketsSold: number, 
-//    buyerUserId: string,
-//    subtotalDollarAmount: number,
-//    taxDollarAmount: number,
-//    totalDollarAmount: number,
+export interface IUserTransactionObject {
+   id: string,
+   drawId :string,
+   buyerUserId: string,
+   sellerUserId: string,
+   ticketIds: string[],
+   ticketsSold: number, 
+   subtotalDollarAmount: number,
+   taxDollarAmount: number,
+   totalDollarAmount: number,
+   braintreeTxnId?: string,
+   braintreeCustomerId?: string,
 //    nameOnCard: string,
 //    emailAddress: string,
-// }
+}
 export interface IUserPayPalTxnObject {
    sellerUserId: string,
    buyerUserId: string,
@@ -112,6 +125,6 @@ export interface IPricingObject {
    subtotal: number, 
    tax: number,
    total: number,
-   stripeTotal: number,
-   applicationFee: number,
+   // stripeTotal: number,
+   // applicationFee: number,
 }
