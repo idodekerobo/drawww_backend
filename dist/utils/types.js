@@ -1,6 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SellerStripeOnboardingStatus = void 0;
+exports.ITicketStatus = exports.SellerStripeOnboardingStatus = void 0;
+// braintree data to add
+// customer id
+// token ? ?
 var SellerStripeOnboardingStatus;
 (function (SellerStripeOnboardingStatus) {
     SellerStripeOnboardingStatus[SellerStripeOnboardingStatus["not_onboarded"] = 0] = "not_onboarded";
@@ -15,5 +18,6 @@ var SneakerGender;
 var ITicketStatus;
 (function (ITicketStatus) {
     ITicketStatus[ITicketStatus["available"] = 0] = "available";
-    ITicketStatus[ITicketStatus["sold"] = 1] = "sold";
-})(ITicketStatus || (ITicketStatus = {}));
+    ITicketStatus[ITicketStatus["claimed"] = 1] = "claimed";
+    ITicketStatus[ITicketStatus["sold"] = 2] = "sold";
+})(ITicketStatus = exports.ITicketStatus || (exports.ITicketStatus = {}));

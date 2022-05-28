@@ -245,11 +245,7 @@ router.post('/close_draw/:drawId', async (req: Request, res: Response) => {
             submitForSettlement: true,
          }
       })  
-      // console.log(txnResult.success)
-      // console.log(txnResult);
-
       if (txnResult.success) {
-         // console.log('txn is successful - do stuff');
          
          // 2. make a transaction data object for firestore
          const braintreeTxnId = txnResult.transaction.id;
