@@ -176,8 +176,8 @@ export const addUserToDrawObjectAfterEnteringDraw = async (buyerUserId: string, 
             updatedTicketArr.push(currentlyCheckedTicket.id);
             ticketsUpdated += 1;
 
-            console.log('new ticket data for ticket id:', currentlyCheckedTicket.id);
-            console.log(currentlyCheckedTicket);
+            // console.log('new ticket data for ticket id:', currentlyCheckedTicket.id);
+            // console.log(currentlyCheckedTicket);
 
             // updating ticket to reflect new status in firestore
             try {

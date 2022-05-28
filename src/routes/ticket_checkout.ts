@@ -88,9 +88,18 @@ router.post('/enter_draw/:drawId/new_customer', async (req: Request, res: Respon
 
       const drawData = await getRaffleDataFromFirestore(drawId);
       if (!drawData) {
-         res.statusMessage = 'There was an error on our side. Please try again later.'
+         res.statusMessage = 'There was an error retrieving draw from firestore to do post update logic.'
          res.status(500).send({
-            status: 'There was an error retrieving draw from firestore to do post upd logic.'
+            status: 'There was an error getting your tickets! Please try again later and contact us if the issue continues.',
+            success: false,
+         });
+         return;
+      }
+      if (drawData.numRemainingRaffleTickets < 1) {
+         res.statusMessage = `There aren't any tickets left on this draw!`;
+         res.status(200).send({
+            status: `There aren't any tickets left on this draw!`,
+            success: false
          });
          return;
       }
@@ -135,13 +144,22 @@ router.post('/enter_draw/:drawId/existing_customer', async (req: Request, res: R
       
       const drawData = await getRaffleDataFromFirestore(drawId);
       if (!drawData) {
-         res.statusMessage = 'There was an error on our side. Please try again later.'
+         res.statusMessage = 'There was an error retrieving draw from firestore to do post update logic.'
          res.status(500).send({
-            status: 'There was an error retrieving draw from firestore to do post upd logic.'
+            status: 'There was an error getting your tickets! Please try again later and contact us if the issue continues.',
+            success: false,
          });
          return res.json({
             success: false
          });
+      }
+      if (drawData.numRemainingRaffleTickets < 1) {
+         res.statusMessage = `There aren't any tickets left on this draw!`;
+         res.status(200).send({
+            status: `There aren't any tickets left on this draw!`,
+            success: false
+         });
+         return;
       }
       
       // 2. edit user firebase object to show that they entered the draw
@@ -193,8 +211,8 @@ router.post('/close_draw/:drawId', async (req: Request, res: Response) => {
    
    const buyerTicketMapObject = drawData.buyerTickets;
    for (const buyerUserId in buyerTicketMapObject) {
-      console.log(`${buyerUserId}`)
-      console.log(buyerTicketMapObject[buyerUserId]);
+      // console.log(`${buyerUserId}`)
+      // console.log(buyerTicketMapObject[buyerUserId]);
 
       const userData = await getUserFromFirestore(buyerUserId);
       if (!userData) {
@@ -227,11 +245,11 @@ router.post('/close_draw/:drawId', async (req: Request, res: Response) => {
             submitForSettlement: true,
          }
       })  
-      console.log(txnResult.success)
-      console.log(txnResult);
+      // console.log(txnResult.success)
+      // console.log(txnResult);
 
       if (txnResult.success) {
-         console.log('txn is successful - do stuff');
+         // console.log('txn is successful - do stuff');
          
          // 2. make a transaction data object for firestore
          const braintreeTxnId = txnResult.transaction.id;
